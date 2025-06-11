@@ -70,9 +70,9 @@ int main(int argc, char** argv){
 
     while (1){
         FD_ZERO(&readfds);
-        FD_SET(0, &readfds);
-        if (status_server_socket != CLOSED_SOCKET) FD_SET(status_server_socket, &readfds);
-        if (location_server_socket != CLOSED_SOCKET) FD_SET(location_server_socket, &readfds);
+        FD_SET(0, &readfds); // stdin
+        if (status_server_socket != INACTIVE_SOCKET) FD_SET(status_server_socket, &readfds);
+        if (location_server_socket != INACTIVE_SOCKET) FD_SET(location_server_socket, &readfds);
 
         int ready = select(maxfd + 1, &readfds, NULL, NULL, NULL);
         if (ready < 0){
@@ -85,7 +85,7 @@ int main(int argc, char** argv){
             if (strncmp(buffer, "kill", 4) == 0) break;
             if (strncmp(buffer, "ss ", 3) == 0) send(status_server_socket, buffer + 3, strlen(buffer + 3), 0);
             else if (strncmp(buffer, "sl ", 3) == 0) send(location_server_socket, buffer + 3, strlen(buffer + 3), 0);
-            else printf("Use 'ss <msg>' or 'sl <msg>' to send\n");
+            else printf("Use 'ss <msg>' or 'sl <msg>' to send; use 'kill' to exit\n");
         }
 
         if (FD_ISSET(status_server_socket, &readfds)){
@@ -94,13 +94,12 @@ int main(int argc, char** argv){
             if (n <= 0){
                 printf("Status server disconnected.\n");
                 close(status_server_socket);
-                status_server_socket = CLOSED_SOCKET;
+                status_server_socket = INACTIVE_SOCKET;
+                continue;
             }
 
-            else{
-                buffer[n] = '\0';
-                printf("[Location server] %s\n", buffer);
-            }
+            buffer[n] = '\0';
+            printf("[Status server] %s\n", buffer);
         }
 
         if (FD_ISSET(location_server_socket, &readfds)){
@@ -109,13 +108,12 @@ int main(int argc, char** argv){
             if (n <= 0){
                 printf("Location server disconnected.\n");
                 close(location_server_socket);
-                location_server_socket = CLOSED_SOCKET;
+                location_server_socket = INACTIVE_SOCKET;
+                continue;
             }
 
-            else{
-                buffer[n] = '\0';
-                printf("[Location server] %s\n", buffer);
-            }
+            buffer[n] = '\0';
+            printf("[Location server] %s\n", buffer);
         }
     }
 

@@ -1,7 +1,7 @@
 #include "common.h"
 
 int main(int argc, char** argv){
-    if (argc < 4) {
+    if (argc < 4){
 		fprintf(stderr,"Correct usage: %s <IP> <p2p_port> <client_port>\n", argv[0]);
 		exit(0);
 	}
@@ -26,7 +26,7 @@ int main(int argc, char** argv){
         exit(EXIT_FAILURE);
     }
 
-    if (listen(client_listen_socket, MAX_CLIENT_SERVER_CONNECTIONS) == -1) {
+    if (listen(client_listen_socket, MAX_CLIENT_SERVER_CONNECTIONS) == -1){
         perror("Listen on client port failed!\n");
         close(client_listen_socket);
         exit(EXIT_FAILURE);
@@ -40,129 +40,253 @@ int main(int argc, char** argv){
 
     int current_p2p_connections = 0;
     int current_client_connections = 0;
-    int started_p2p_listening = 0;
     socklen_t p2p_length = sizeof(p2p_address);
     socklen_t client_length = sizeof(client_address);
 
     int client_sockets[MAX_CLIENT_SERVER_CONNECTIONS]; // actual client connection sockets
     for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++)
-        client_sockets[i] = 0;
+        client_sockets[i] = INACTIVE_SOCKET;
 
-    int p2p_listen_socket; // socket where the server might listen on later
+    int p2p_listen_socket = INACTIVE_SOCKET; // socket where the server might listen on later
     int p2p_listen_opt = 1;
-
-    int p2p_socket = socket(AF_INET, SOCK_STREAM, 0); // actual P2P connection socket
-    if (p2p_socket == -1){
-        perror("Own socket initialization failed!\n");
+    int p2p_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (p2p_socket == -1) {
+        perror("P2P socket creation failed");
         exit(EXIT_FAILURE);
     }
 
+    fd_set readfds;
+    int maxfd;
+
     // main loop
     while (1){
-        // before listening on the P2P port, the server checks if some other server already is
-        // if the connections succeeds, it won't listen in on the P2P port until the connection closes
-        // if the connection fails, it is the only server for now, so it starts listening on the P2P port
-        if (!current_p2p_connections && !started_p2p_listening){
-            if (connect(p2p_socket, (struct sockaddr*)(&p2p_address), sizeof(struct sockaddr_in))){
-                close(p2p_socket);
-                p2p_listen_socket = socket(AF_INET, SOCK_STREAM, 0);
-                setsockopt(p2p_listen_socket, SOL_SOCKET, SO_REUSEADDR, &client_listen_opt, sizeof(client_listen_opt));
-                if (p2p_listen_socket == -1){
-                    perror("P2P socket initialization failed!\n");
-                    exit(EXIT_FAILURE);
-                }
+        /* ===============================================================================================
+            before listening on the P2P port, the server checks if some other server already is
+            if the connections succeeds, it won't listen in on the P2P port until the connection closes
+            if the connection fails, it is the only server for now, so it starts listening on the P2P port
+        =============================================================================================== */
 
-                if (bind(p2p_listen_socket, (struct sockaddr*)(&p2p_address), sizeof(p2p_address))){
-                    perror("Server connection failed!\n");
-                    exit(EXIT_FAILURE);
-                }
-
-                if (listen(p2p_listen_socket, MAX_P2P_CONNECTIONS) == -1) {
-                    perror("Listen on P2P port failed!\n");
-                    close(p2p_listen_socket);
-                    exit(EXIT_FAILURE);
-                }
-
-                started_p2p_listening = 1;
-            }
-
-            else{
-                printf("Successfully connected to peer!\n");
+        if (!current_p2p_connections && p2p_listen_socket == INACTIVE_SOCKET){
+            if (!connect(p2p_socket, (struct sockaddr*)(&p2p_address), sizeof(struct sockaddr_in))){
                 current_p2p_connections++;
-            }
-        }
-        
-        // the connection has failed, so it listens on the P2P port
-        // accepts new connections through the IP address and ports informed
-        // if a connection limit is already exceeded, sends an ERROR(01) message back before closing the socket
-        if (started_p2p_listening && current_p2p_connections < MAX_P2P_CONNECTIONS){
-            printf("Current P2P connections: %d\n", current_p2p_connections);
-            printf("No peer found, starting to listen...\n");
-            struct sockaddr_in incoming_p2p_address;
-            socklen_t incoming_p2p_length = sizeof(incoming_p2p_address);
-            p2p_socket = accept(p2p_listen_socket, (struct sockaddr*)&incoming_p2p_address, &incoming_p2p_length);
-            current_p2p_connections++;
-            printf("Successfully accepted connection from peer!\n");
-
-            if (p2p_socket == -1){
-                perror("Accept failed!\n");
                 continue;
             }
+            
+            close(p2p_socket);
+            p2p_socket = INACTIVE_SOCKET;
+
+            p2p_listen_socket = socket(AF_INET, SOCK_STREAM, 0);
+            setsockopt(p2p_listen_socket, SOL_SOCKET, SO_REUSEADDR, &client_listen_opt, sizeof(client_listen_opt));
+            if (p2p_listen_socket == -1){
+                perror("P2P socket initialization failed!\n");
+                exit(EXIT_FAILURE);
+            }
+
+            if (bind(p2p_listen_socket, (struct sockaddr*)(&p2p_address), sizeof(p2p_address))){
+                perror("Server connection failed!\n");
+                exit(EXIT_FAILURE);
+            }
+
+            if (listen(p2p_listen_socket, MAX_P2P_CONNECTIONS) == -1){
+                perror("Listen on P2P port failed!\n");
+                close(p2p_listen_socket);
+                exit(EXIT_FAILURE);
+            }
+
+            printf("No peer found, starting to listen...\n");
         }
 
-        // regardless of whether it listens on the P2P port or not, it will listen on its own client port
-        if (current_client_connections < MAX_CLIENT_SERVER_CONNECTIONS) {
-            printf("Waiting for a client to connect on port %s...\n", argv[3]);
+        /* ===================================================================================
+            sets up the socket to be monitored by select()
+            these sockets include:
+                 the terminal (stdin)
+                 the client listening socket
+                 the P2P listening socket, if this server is the one listening on the P2P port
+                 the current client sockets
+        =================================================================================== */
+        
+        maxfd = 0;
+        FD_ZERO(&readfds);
+        FD_SET(0, &readfds); // stdin
+
+        FD_SET(client_listen_socket, &readfds);
+        if (client_listen_socket > maxfd) maxfd = client_listen_socket;
+
+        if (p2p_socket != INACTIVE_SOCKET){
+            FD_SET(p2p_socket, &readfds);
+            if (p2p_socket > maxfd) maxfd = p2p_socket;
+        }
+
+        if (p2p_listen_socket != INACTIVE_SOCKET){
+            FD_SET(p2p_listen_socket, &readfds);
+            if (p2p_listen_socket > maxfd) maxfd = p2p_listen_socket;
+        }
+        
+        for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++){
+            if (client_sockets[i] != INACTIVE_SOCKET){
+                FD_SET(client_sockets[i], &readfds);
+                if (client_sockets[i] > maxfd) maxfd = client_sockets[i];
+            }
+        }
+
+        /* =================================================================================================================
+            the iteration stops here until something arrives in the sockets monitored by select() (or if there was an error)
+            these sockets include:
+                the terminal, which sends direct commands to the server
+                the client listening socket, to accept and potentially refuse new client connections
+                the P2P listening socket, if this server owns it, to accept and refuse other P2P connections
+                the active P2P connection, if there is one
+                the current clients connected to it
+            
+            if there was an error, this iteration is skipped and consecutive_select_fails is incremented
+            if there are 3 consecutive select() fails, the program:
+                sends an error message to every server and client connected to it
+                closes the current active sockets
+                shuts down
+        ================================================================================================================= */
+
+        int activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);
+        if (activity < 0){
+            perror("Select failed!\n");
+            exit(EXIT_FAILURE);
+        }
+
+        /* =================================================================================================
+            if select() returned, then something has arrived in one or more sockets
+            from here on, the server must check which socket(s):
+                if it was a terminal input (stdin), it processes the command and acts accordingly
+                if it was a listening socket, it processes the incoming connection request and treats it
+                if it was a client socket or the P2P, it processes the incoming message and acts accordingly
+        ================================================================================================= */
+
+        // terminal input
+        if (FD_ISSET(0, &readfds)){
+            char input_buffer[256];
+            if (fgets(input_buffer, sizeof(input_buffer), stdin) == NULL) break;
+
+            if (strncmp(input_buffer, "kill", 4) == 0){
+                // sends a custom protocol message to peer requesting to disconnect
+                break;
+            }
+
+            else if (strncmp(input_buffer, "clients", 7) == 0){
+                for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++)
+                    if (client_sockets[i] != INACTIVE_SOCKET) send(client_sockets[i], input_buffer + 7, strlen(input_buffer + 7), 0);
+            }
+
+            else if (strncmp(input_buffer, "peer ", 5) == 0) send(p2p_socket, input_buffer + 5, strlen(input_buffer + 5), 0);
+            else printf("Known commands: kill, peer\n");
+        }
+
+        // Client listening socket
+        if (FD_ISSET(client_listen_socket, &readfds)){
+            struct sockaddr_in incoming_client_address;
+            socklen_t incoming_client_length = sizeof(struct sockaddr_in);
+            int new_client_socket = accept(client_listen_socket, (struct sockaddr*)&incoming_client_address, &incoming_client_length);
+
+            if (new_client_socket == -1){
+                perror("Accept failed!\n");
+                exit(EXIT_FAILURE);
+            }
+
+            if (current_client_connections >= MAX_CLIENT_SERVER_CONNECTIONS){
+                // sends "Sensor limit exceeded" to the client and closes the socket
+                printf("Sensor limit exceeded\n");
+                close(new_client_socket);
+                continue;
+            }
 
             int free_index = -1;
-            for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++)
-                if (client_sockets[i] == 0) free_index = i;
-
-            struct sockaddr_in incoming_client_address;
-            int new_client_socket = accept(client_listen_socket, (struct sockaddr*)&incoming_client_address, &client_length);
-
-            if (free_index == -1){
-                printf("Client limit exceeded => connection refused!\n");
-                send(client_sockets[free_index], "Client limit exceeded!", 22, 0);
+            for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++){
+                if (client_sockets[i] == INACTIVE_SOCKET){
+                    free_index = i;
+                    break;
+                }
+            }
+            
+            if (free_index == -1) {
+                fprintf(stderr, "No available slot for new client!\n");
                 close(new_client_socket);
                 continue;
             }
             
-            else if (client_sockets[free_index] < 0) perror("Client accept failed!\n");
+            client_sockets[free_index] = new_client_socket;
+            current_client_connections++;
+        }
 
-            else{
-                client_sockets[free_index] = new_client_socket;
-                printf("Client connected!\n");
-                current_client_connections++;
+        // P2P listening socket
+        if (p2p_listen_socket != INACTIVE_SOCKET && FD_ISSET(p2p_listen_socket, &readfds)){
+            struct sockaddr_in incoming_p2p_address;
+            socklen_t incoming_p2p_length = sizeof(incoming_p2p_address);
+            int new_p2p_socket = accept(p2p_listen_socket, (struct sockaddr*)&incoming_p2p_address, &incoming_p2p_length);
 
-                char buffer[1024] = {0};
-                ssize_t bytes_received = recv(client_sockets[free_index], buffer, sizeof(buffer) - 1, 0);
+            if (new_p2p_socket == -1){
+                perror("Accept failed!\n");
+                exit(EXIT_FAILURE);
+            }
 
-                if (bytes_received > 0){
-                    printf("Received from client: %s\n", buffer);
-                    send(client_sockets[free_index], "Hello from server!", 18, 0);
+            if (current_p2p_connections >= MAX_P2P_CONNECTIONS){
+                // sends "Peer limit exceeded" to the server and closes the socket
+                printf("Peer limit exceeded\n");
+                close(new_p2p_socket);
+                continue;
+            }
+
+            p2p_socket = new_p2p_socket;
+            current_p2p_connections++;
+        }
+
+        // P2P socket
+        if (p2p_socket != INACTIVE_SOCKET && FD_ISSET(p2p_socket, &readfds)){
+            char incoming_message[MAX_BUFFER_SIZE];
+            int bytes_received = recv(p2p_socket, incoming_message, sizeof(incoming_message) - 1, 0);
+
+            if (bytes_received <= 0){
+                // peer disconnected
+                printf("Peer disconnected\n");
+                close(p2p_socket);
+                p2p_socket = INACTIVE_SOCKET;
+                current_p2p_connections--;
+                continue;
+            }
+
+            incoming_message[bytes_received] = '\0';
+            printf("[Peer] %s\n", incoming_message);
+        }
+
+        // Client sockets
+        for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++){
+            if (client_sockets[i] != INACTIVE_SOCKET && FD_ISSET(client_sockets[i], &readfds)){
+                char incoming_message[MAX_BUFFER_SIZE];
+                int bytes_received = recv(client_sockets[i], incoming_message, sizeof(incoming_message) - 1, 0);
+                
+                if (bytes_received <= 0){
+                    // client disconnected
+                    printf("Client %d disconnected\n", i);
+                    close(client_sockets[i]);
+                    client_sockets[i] = INACTIVE_SOCKET;
+                    current_client_connections--;
+                    continue;
                 }
-
-                if (strncmp(buffer, "close", 5) == 0){
-                    close(client_sockets[free_index]);
-                    client_sockets[free_index] = 0;
-                    break;
-                }
+                
+                incoming_message[bytes_received] = '\0';
+                printf("[Client %d] %s\n", i, incoming_message);
             }
         }
     }
 
+    close(client_listen_socket);
+    if (p2p_listen_socket != INACTIVE_SOCKET) close(p2p_listen_socket);
+    if (p2p_socket != INACTIVE_SOCKET) close(p2p_socket);
+
     for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++){
-        if (client_sockets[i] != 0){
-            printf("Client connection closed.\n");
+        if (client_sockets[i] != INACTIVE_SOCKET){
+            printf("Connection with client %d closed\n", i);
             close(client_sockets[i]);
-            client_sockets[i] = 0;
+            client_sockets[i] = INACTIVE_SOCKET;
         }
     }
 
-    printf("Closing down!\n");
-    close(p2p_socket);
-    close(p2p_listen_socket);
-    close(client_listen_socket);
+    printf("Exiting...\n");
     return 0;
 }
