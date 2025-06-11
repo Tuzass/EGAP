@@ -244,9 +244,9 @@ int main(int argc, char** argv){
             if (bytes_received <= 0){
                 // peer disconnected
                 printf("Peer disconnected\n");
-                close(p2p_socket);
                 p2p_socket = INACTIVE_SOCKET;
                 current_p2p_connections--;
+                printf("No peer found, starting to listen...\n");
                 continue;
             }
 
