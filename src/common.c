@@ -31,3 +31,10 @@ int addressToString(const struct sockaddr_in* address, char* address_string, siz
     *port = ntohs(address->sin_port);
     return 0;
 }
+
+int compareIDs(const uint8_t* id1, const uint8_t* id2){
+    for (int i = 0; i < SENSOR_ID_LENGTH; i++)
+        if (id1[i] != id2[i]) return 0;
+    
+    return 1;
+}
