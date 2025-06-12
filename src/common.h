@@ -11,7 +11,7 @@
 #include <netinet/in.h>
 
 #define MAX_MESSAGE_SIZE 500
-#define SENSOR_ID_LENGTH 10
+#define ID_LENGTH 10
 #define MAX_BUFFER_SIZE MAX_MESSAGE_SIZE + 4
 #define MAX_P2P_CONNECTIONS 1
 #define MAX_CLIENT_SERVER_CONNECTIONS 15
@@ -46,4 +46,5 @@
 
 int stringToAddress(const char* address_string, const char* port_string, struct sockaddr_in* address_storage);
 int addressToString(const struct sockaddr_in* address, char* address_string, size_t string_size, uint16_t* port);
+void generateRandomID(uint8_t* id);
 int compareIDs(const uint8_t* id1, const uint8_t* id2);

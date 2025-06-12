@@ -1,6 +1,8 @@
 #include "common.h"
 
 int main(int argc, char** argv){
+    srand(time(NULL));
+
     if (argc < 4){
 		fprintf(stderr,"Correct usage: %s <IP> <p2p_port> <client_port>\n", argv[0]);
 		exit(0);
@@ -43,21 +45,24 @@ int main(int argc, char** argv){
     socklen_t p2p_length = sizeof(p2p_address);
     socklen_t client_length = sizeof(client_address);
 
-    int client_sockets[MAX_CLIENT_SERVER_CONNECTIONS]; // actual client connection sockets
+    int client_sockets[MAX_CLIENT_SERVER_CONNECTIONS];
     for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++)
         client_sockets[i] = INACTIVE_SOCKET;
     
-    uint8_t client_ids[MAX_CLIENT_SERVER_CONNECTIONS * SENSOR_ID_LENGTH];
-    for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS * SENSOR_ID_LENGTH; i++)
+    uint8_t client_ids[MAX_CLIENT_SERVER_CONNECTIONS * ID_LENGTH];
+    for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS * ID_LENGTH; i++)
         client_ids[i] = 0;
 
-    int p2p_listen_socket = INACTIVE_SOCKET; // socket where the server might listen on later
+    int p2p_listen_socket = INACTIVE_SOCKET;
     int p2p_listen_opt = 1;
     int p2p_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (p2p_socket == -1) {
         fprintf(stderr, "Failed to create the P2P socket");
         exit(EXIT_FAILURE);
     }
+
+    uint8_t id[ID_LENGTH];
+    uint8_t peer_id[ID_LENGTH];
 
     fd_set readfds;
     int maxfd;
@@ -66,6 +71,69 @@ int main(int argc, char** argv){
     while (1){
         if (!current_p2p_connections && p2p_listen_socket == INACTIVE_SOCKET){
             if (!connect(p2p_socket, (struct sockaddr*)(&p2p_address), sizeof(struct sockaddr_in))){
+                uint8_t response[MAX_BUFFER_SIZE];
+                int bytes_received = recv(p2p_socket, response, 2, 0);
+                if (bytes_received <= 0){
+                    fprintf(stderr, "Failed to receive response or peer disconnected\n");
+                    exit(EXIT_FAILURE);
+                }
+
+                if (response[0] == MESSAGE_ERROR && response[1] == PEER_LIMIT_EXCEEDED){
+                    printf("Peer limit exceeded\n");
+                    exit(EXIT_FAILURE);
+                }
+
+                if (response[0] == MESSAGE_OK && response[1] == SUCCESSFUL_CONNECT){
+                    uint8_t peer_connection_request[ID_LENGTH];
+                    peer_connection_request[0] = REQ_VALIDATEID;
+
+                    while(1){
+                        generateRandomID(peer_connection_request + 1);
+                        
+                        if (send(p2p_socket, peer_connection_request, ID_LENGTH + 1, 0) == -1){
+                            fprintf(stderr, "Failed to send REQ_VALIDATEID\n");
+                            exit(EXIT_FAILURE);
+                        }
+
+                        bytes_received = recv(p2p_socket, response, ID_LENGTH + 1, 0);
+                        if (bytes_received <= 0){
+                            fprintf(stderr, "Failed to receive response or peer disconnected\n");
+                            exit(EXIT_FAILURE);
+                        }
+
+                        if (response[0] == RES_VALIDATEID && response[1] == NOT_UNIQUE) continue;
+                        if (response[0] == RES_VALIDATEID && response[1] == UNIQUE) break;
+                    }
+
+                    printf("New Peer ID: ");
+                    for (int i = 0; i < ID_LENGTH; i++){
+                        id[i] = peer_connection_request[i + 1];
+                        printf("%c", (char)id[i]);
+                    }
+                    printf("\n");
+
+                    peer_connection_request[0] = REQ_CONNPEER;
+                    if (send(p2p_socket, peer_connection_request, ID_LENGTH + 1, 0) == -1){
+                        fprintf(stderr, "Failed to send REQ_CONNPEER\n");
+                        exit(EXIT_FAILURE);
+                    }
+
+                    bytes_received = recv(p2p_socket, response, ID_LENGTH + 1, 0);
+                    if (bytes_received <= 0){
+                        fprintf(stderr, "Failed to receive response or peer disconnected\n");
+                        exit(EXIT_FAILURE);
+                    }
+
+                    if (response[0] == RES_CONNPEER){
+                        printf("Peer ");
+                        for (int i = 0; i < ID_LENGTH; i++){
+                            peer_id[i] = response[i + 1];
+                            printf("%c", (char)peer_id[i]);
+                        }
+                        printf(" connected\n");
+                    }
+                }
+
                 current_p2p_connections++;
                 continue;
             }
@@ -91,6 +159,7 @@ int main(int argc, char** argv){
                 exit(EXIT_FAILURE);
             }
 
+            generateRandomID(id);
             printf("No peer found, starting to listen...\n");
         }
         
@@ -187,8 +256,8 @@ int main(int argc, char** argv){
             }
 
             while (1){
-                uint8_t validateid_request[SENSOR_ID_LENGTH + 1];
-                int bytes_received = recv(new_client_socket, validateid_request, SENSOR_ID_LENGTH + 1, 0);
+                uint8_t validateid_request[ID_LENGTH + 1];
+                int bytes_received = recv(new_client_socket, validateid_request, ID_LENGTH + 1, 0);
 
                 if (bytes_received <= 0){
                     fprintf(stderr, "Failed to receive message from client or client disconnected\n");
@@ -207,7 +276,7 @@ int main(int argc, char** argv){
                 for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++){
                     if (client_sockets[i] == INACTIVE_SOCKET) continue;
 
-                    if (compareIDs(validateid_request + 1, &client_ids[i * SENSOR_ID_LENGTH])){
+                    if (compareIDs(validateid_request + 1, &client_ids[i * ID_LENGTH])){
                         unique_id = 0;
                         break;
                     }
@@ -225,22 +294,22 @@ int main(int argc, char** argv){
                 }
             }
 
-            uint8_t connection_request[SENSOR_ID_LENGTH + 1];
-            int bytes_received = recv(new_client_socket, connection_request, SENSOR_ID_LENGTH, 0);
+            uint8_t connection_request[ID_LENGTH + 1];
+            int bytes_received = recv(new_client_socket, connection_request, ID_LENGTH, 0);
             if (connection_request[0] != REQ_CONNSEN){
                 fprintf(stderr, "Received an unexpected message\n");
                 exit(EXIT_FAILURE);
             }
 
             connection_request[0] = RES_CONNSEN;
-            if (send(new_client_socket, connection_request, SENSOR_ID_LENGTH, 0) == -1){
+            if (send(new_client_socket, connection_request, ID_LENGTH, 0) == -1){
                 fprintf(stderr, "Failed to send RES_CONNSEN\n");
                 exit(EXIT_FAILURE);
             }
 
             printf("Client ");
-            for (int i = 0; i < SENSOR_ID_LENGTH; i++){
-                client_ids[free_index * SENSOR_ID_LENGTH + i] = connection_request[i + 1];
+            for (int i = 0; i < ID_LENGTH; i++){
+                client_ids[free_index * ID_LENGTH + i] = connection_request[i + 1];
                 printf("%c", (char)connection_request[i + 1]);
             }
             printf(" added (Loc %d)\n", 0);
@@ -277,6 +346,69 @@ int main(int argc, char** argv){
             uint8_t accepted_peer_message[2] = {MESSAGE_OK, SUCCESSFUL_CONNECT};
             if (send(new_p2p_socket, accepted_peer_message, 2, 0) == -1){
                 fprintf(stderr, "Failed to warn peer about successful connect\n");
+                exit(EXIT_FAILURE);
+            }
+
+            while(1){
+                uint8_t validateid_request[ID_LENGTH + 1];
+                int bytes_received = recv(new_p2p_socket, validateid_request, ID_LENGTH + 1, 0);
+                if (bytes_received <= 0){
+                    fprintf(stderr, "Failed to receive response or peer disconnected\n");
+                    exit(EXIT_FAILURE);
+                }
+
+                if (validateid_request[0] == REQ_VALIDATEID){
+                    if (compareIDs(id, validateid_request + 1)){
+                        uint8_t validateid_response[2] = {RES_VALIDATEID, NOT_UNIQUE};
+                        if (send(new_p2p_socket, validateid_response, 2, 0) == -1){
+                            fprintf(stderr, "Failed to send RES_VALIDATEID\n");
+                            exit(EXIT_FAILURE);
+                        }
+
+                        continue;
+                    }
+
+                    uint8_t validateid_response[2] = {RES_VALIDATEID, UNIQUE};
+                    if (send(new_p2p_socket, validateid_response, 2, 0) == -1){
+                        fprintf(stderr, "Failed to send RES_VALIDATEID\n");
+                        exit(EXIT_FAILURE);
+                    }
+
+                    break;
+                }
+            }
+
+            uint8_t peer_connection_request[ID_LENGTH + 1];
+            int bytes_received = recv(new_p2p_socket, peer_connection_request, ID_LENGTH + 1, 0);
+            if (bytes_received <= 0){
+                fprintf(stderr, "Failed to receive response or peer disconnected\n");
+                exit(EXIT_FAILURE);
+            }
+
+            if (peer_connection_request[0] != REQ_CONNPEER){
+                fprintf(stderr, "Received unexpected message\n");
+                exit(EXIT_FAILURE);
+            }
+
+            uint8_t peer_connection_response[ID_LENGTH + 1];
+            peer_connection_response[0] = RES_CONNPEER;
+
+            printf("New Peer ID: ");
+            for (int i = 0; i < ID_LENGTH; i++){
+                peer_connection_response[i + 1] = id[i];
+                printf("%c", (char)id[i]);
+            }
+            printf("\n");
+
+            printf("Peer ");
+            for (int i = 0; i < ID_LENGTH; i++){
+                peer_id[i] = peer_connection_request[i + 1];
+                printf("%c", (char)peer_id[i]);
+            }
+            printf(" connected\n");
+
+            if (send(new_p2p_socket, peer_connection_response, ID_LENGTH + 1, 0) == -1){
+                fprintf(stderr, "Failed to send RES_CONNPEER\n");
                 exit(EXIT_FAILURE);
             }
             

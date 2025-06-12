@@ -1,10 +1,5 @@
 #include "common.h"
 
-void generateRandomID(uint8_t* ID){
-    for (int i = 0; i < SENSOR_ID_LENGTH; i++)
-        ID[i] = rand() % 10 + 48;
-}
-
 int createSocket(const char* address_string, const char* port_string, struct sockaddr_in* ipv4_address){
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if (s == -1){
@@ -23,7 +18,7 @@ int createSocket(const char* address_string, const char* port_string, struct soc
 uint8_t requestValidateID(int socket, uint8_t* validateid_request){
     uint8_t response[MAX_BUFFER_SIZE];
 
-    if (send(socket, validateid_request, SENSOR_ID_LENGTH + 1, 0) == -1){
+    if (send(socket, validateid_request, ID_LENGTH + 1, 0) == -1){
         fprintf(stderr, "Failed to send REQ_UNIQUEID\n");
         exit(EXIT_FAILURE);
     }
@@ -45,7 +40,7 @@ uint8_t requestValidateID(int socket, uint8_t* validateid_request){
 void requestConnection(int socket, uint8_t* connection_request){
     uint8_t response[MAX_BUFFER_SIZE];
 
-    if (send(socket, connection_request, SENSOR_ID_LENGTH + 1, 0) == -1){
+    if (send(socket, connection_request, ID_LENGTH + 1, 0) == -1){
         fprintf(stderr, "Failed to send REQ_UNIQUEID\n");
         exit(EXIT_FAILURE);
     }
@@ -63,7 +58,7 @@ void requestConnection(int socket, uint8_t* connection_request){
 }
 
 void sendValidID(int status_server_socket, int location_server_socket){
-    uint8_t validateid_request[SENSOR_ID_LENGTH + 1];
+    uint8_t validateid_request[ID_LENGTH + 1];
     validateid_request[0] = REQ_VALIDATEID;
     
     while (1){
@@ -78,9 +73,9 @@ void sendValidID(int status_server_socket, int location_server_socket){
         break;
     }
 
-    uint8_t connection_request[SENSOR_ID_LENGTH + 1];
+    uint8_t connection_request[ID_LENGTH + 1];
     connection_request[0] = REQ_CONNSEN;
-    for (int i = 0; i < SENSOR_ID_LENGTH; i++)
+    for (int i = 0; i < ID_LENGTH; i++)
         connection_request[i + 1] = validateid_request[i + 1];
     
     requestConnection(status_server_socket, connection_request);

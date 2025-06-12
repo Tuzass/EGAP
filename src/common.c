@@ -32,8 +32,13 @@ int addressToString(const struct sockaddr_in* address, char* address_string, siz
     return 0;
 }
 
+void generateRandomID(uint8_t* ID){
+    for (int i = 0; i < ID_LENGTH; i++)
+        ID[i] = rand() % 10 + 48;
+}
+
 int compareIDs(const uint8_t* id1, const uint8_t* id2){
-    for (int i = 0; i < SENSOR_ID_LENGTH; i++)
+    for (int i = 0; i < ID_LENGTH; i++)
         if (id1[i] != id2[i]) return 0;
     
     return 1;
