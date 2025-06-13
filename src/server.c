@@ -1,5 +1,15 @@
 #include "common.h"
 
+int8_t generateRandomStatus(){
+    return rand() % 2;
+}
+
+int8_t generateRandomLocation(){
+    int location = rand() % 11;
+    if (!location) return -1;
+    return location;
+}
+
 int bindAndListen(int socket, struct sockaddr_in* address){
     if (bind(socket, (struct sockaddr*)address, sizeof(*address)) == -1) return ERROR_SOCKET_BINDING;
     if (listen(socket, MAX_CLIENT_SERVER_CONNECTIONS) == -1) return ERROR_SOCKET_LISTENING;
@@ -384,6 +394,10 @@ int main(int argc, char** argv){
     for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++)
         client_sockets[i] = INACTIVE_SOCKET;
     
+    int8_t client_data[MAX_CLIENT_SERVER_CONNECTIONS];
+    for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++)
+        client_data[i] = 0;
+    
     uint8_t client_ids[MAX_CLIENT_SERVER_CONNECTIONS * ID_LENGTH];
     for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS * ID_LENGTH; i++)
         client_ids[i] = 0;
@@ -403,7 +417,6 @@ int main(int argc, char** argv){
             if (!rv){
                 int peer_identity = requestIdentityFromPeer(p2p_socket);
                 if (peer_identity != IDENTITY_NONE) identity = 1 - peer_identity;
-                printf("My identity: %d\n", identity);
                 current_p2p_connections++;
             }
 
@@ -481,10 +494,6 @@ int main(int argc, char** argv){
             int new_client_index = acceptClientConnection(client_listen_socket, current_client_connections, client_sockets, client_ids);
 
             if (new_client_index >= 0){
-                printf("Client ");
-                printID(client_ids + new_client_index * ID_LENGTH);
-                printf(" added (Loc %d)\n", 0);
-
                 if (identity == IDENTITY_NONE){
                     identity = requestIdentityFromClient(client_sockets[new_client_index]);
                     if (identity < 0){
@@ -492,7 +501,19 @@ int main(int argc, char** argv){
                         if (EXIT_LOGGING) printExitCode(identity);
                         exit(identity);
                     }
-                    printf("My identity: %d\n", identity);
+                }
+                
+                printf("Client ");
+                printID(client_ids + new_client_index * ID_LENGTH);
+
+                if (identity == IDENTITY_STATUS){
+                    int8_t status = generateRandomStatus();
+                    client_data[new_client_index] = status;
+                    printf(" added (Status %d)\n", status);
+                } else{
+                    int8_t location = generateRandomLocation();
+                    client_data[new_client_index] = location;
+                    printf(" added (Loc %d)\n", location);
                 }
 
                 current_client_connections++;
@@ -576,7 +597,6 @@ int main(int argc, char** argv){
 
             if (incoming_message[0] == REQ_SERVERIDENTITY){
                 uint8_t res_serveridentity[2] = {RES_SERVERIDENTITY, identity};
-                printf("My identity: %d\n", identity);
                 if (send(p2p_socket, res_serveridentity, 2, 0) == -1){
                     closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
                     if (EXIT_LOGGING) printExitCode(ERROR_SEND);
@@ -599,7 +619,9 @@ int main(int argc, char** argv){
                     if (!rv){
                         printf("Client ");
                         printID(client_ids + i * ID_LENGTH);
-                        printf(" disconnected (Loc 0)\n");
+                        
+                        if (identity == IDENTITY_STATUS) printf(" disconnected (Status %d)\n", client_data[i]);
+                        else printf(" disconnected (Loc %d)\n", client_data[i]);
 
                         close(client_sockets[i]);
                         client_sockets[i] = INACTIVE_SOCKET;
