@@ -416,10 +416,20 @@ int main(int argc, char** argv){
 
         if (FD_ISSET(0, &readfds)){
             char stdin_input[256];
-            if (fgets(stdin_input, sizeof(stdin_input), stdin) == NULL) break;
+            int kill = 0;
+            int close_connection = 0;
 
-            if (strncmp(stdin_input, "kill", 4) == 0){
-                if (current_p2p_connections == 0) break;
+            if (fgets(stdin_input, sizeof(stdin_input), stdin) == NULL) break;
+            
+            if (strncmp(stdin_input, "kill", 4) == 0) kill = 1;
+            else if (strncmp(stdin_input, "close connection", 16) == 0) close_connection = 1;
+            
+            if (kill || close_connection){
+                if (kill && current_p2p_connections == 0) break;
+                if (close_connection && current_p2p_connections == 0){
+                    printf("No peer connected to close connection\n");
+                    continue;
+                }
 
                 int rv = requestPeerDisconnection(p2p_socket, id);
                 if (rv){
@@ -435,7 +445,7 @@ int main(int argc, char** argv){
                 break;
             }
 
-            printf("Use 'kill' to exit\n");
+            printf("Use 'kill' to exit; If you don't want to exit in the case there is no peer, use 'close connection' instead \n");
         }
 
         if (FD_ISSET(client_listen_socket, &readfds)){

@@ -103,11 +103,7 @@ int requestServerDisconnection(int socket, uint8_t* id){
     if (recv(socket, res_discsen, ID_LENGTH + 1, 0) <= 0) return ERROR_RECEIVE;
 
     if (res_discsen[0] == MESSAGE_OK && res_discsen[1] == SUCCESSFUL_DISCONNECT) return 0;
-    if (res_discsen[0] == MESSAGE_ERROR && res_discsen[1] == SENSOR_NOT_FOUND){
-        printf("Sensor not found\n");
-        return ERROR_SENSOR_NOT_FOUND;
-    }
-
+    if (res_discsen[0] == MESSAGE_ERROR && res_discsen[1] == SENSOR_NOT_FOUND) return ERROR_SENSOR_NOT_FOUND;
     return ERROR_UNEXPECTED_MESSAGE;
 }
 
@@ -141,7 +137,7 @@ int main(int argc, char** argv){
 
     while (1){
         FD_ZERO(&readfds);
-        FD_SET(0, &readfds); // stdin
+        FD_SET(0, &readfds);
         if (status_server_socket != INACTIVE_SOCKET) FD_SET(status_server_socket, &readfds);
         if (location_server_socket != INACTIVE_SOCKET) FD_SET(location_server_socket, &readfds);
 
@@ -156,14 +152,23 @@ int main(int argc, char** argv){
             if (fgets(stdin_input, sizeof(stdin_input), stdin) == NULL) break;
             if (strncmp(stdin_input, "kill", 4) == 0){
                 int ss_rv = requestServerDisconnection(status_server_socket, id);
+                int ls_rv = requestServerDisconnection(location_server_socket, id);
+
+                if (ss_rv == ERROR_SENSOR_NOT_FOUND && ls_rv == ERROR_SENSOR_NOT_FOUND){
+                    printf("Sensor not found\n");
+                    if (EXIT_LOGGING) printExitCode(ERROR_SENSOR_NOT_FOUND);
+                    exit(ERROR_SENSOR_NOT_FOUND);
+                }
+
                 if (!ss_rv) printf("SS Successful disconnect\n");
+                else if (ss_rv == ERROR_SENSOR_NOT_FOUND) printf("Sensor not found\n");
                 else{
                     if (EXIT_LOGGING) printExitCode(ss_rv);
                     exit(ss_rv);
                 }
 
-                int ls_rv = requestServerDisconnection(location_server_socket, id);
                 if (!ls_rv) printf("SL Successful disconnect\n");
+                else if (ls_rv == ERROR_SENSOR_NOT_FOUND) printf("Sensor not found\n");
                 else{
                     if (EXIT_LOGGING) printExitCode(ls_rv);
                     exit(ls_rv);
