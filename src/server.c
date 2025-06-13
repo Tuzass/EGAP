@@ -361,6 +361,17 @@ int requestIdentityFromClient(int client_socket){
     return res_serveridentity[1];
 }
 
+int requestCheckAlert(int p2p_socket, int client_index){
+    uint8_t req_checkalert[2] = {REQ_CHECKALERT, client_index};
+    if (send(p2p_socket, req_checkalert, ID_LENGTH + 1, 0) == -1) return ERROR_SEND;
+
+    int8_t res_checkalert[2];
+    if (recv(p2p_socket, res_checkalert, 2, 0) <= 0) return ERROR_RECEIVE;
+    if (res_checkalert[0] == MESSAGE_ERROR && res_checkalert[1] == SENSOR_NOT_FOUND) return ERROR_SENSOR_NOT_FOUND;
+    if (res_checkalert[0] == RES_CHECKALERT) return res_checkalert[1];
+    return ERROR_UNEXPECTED_MESSAGE;
+}
+
 int main(int argc, char** argv){
     srand(time(NULL));
 
@@ -603,6 +614,25 @@ int main(int argc, char** argv){
                     exit(ERROR_SEND);
                 }
             }
+
+            if (incoming_message[0] == REQ_CHECKALERT){
+                int client_index = incoming_message[1];
+                printf("REQ_CHECKALERT ");
+                printID(client_ids + client_index * ID_LENGTH);
+                printf("\n");
+
+                int8_t res_checkalert[2] = {MESSAGE_ERROR, SENSOR_NOT_FOUND};
+                if (client_sockets[client_index] != INACTIVE_SOCKET){
+                    res_checkalert[0] = RES_CHECKALERT;
+                    res_checkalert[1] = client_data[client_index];
+                }
+
+                if (send(p2p_socket, res_checkalert, 2, 0) == -1){
+                    closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                    if (EXIT_LOGGING) printExitCode(ERROR_SEND);
+                    exit(ERROR_SEND);
+                }
+            }
         }
 
         for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++){
@@ -634,9 +664,42 @@ int main(int argc, char** argv){
                     exit(rv);
                 }
 
-                printf("Peer ");
-                printID(peer_id);
-                printf(" disconnected\n");
+                if (incoming_message[0] == REQ_SENSSTATUS){
+                    if (identity != IDENTITY_STATUS){
+                        if (EXIT_LOGGING) printExitCode(ERROR_UNEXPECTED_MESSAGE);
+                        exit(ERROR_UNEXPECTED_MESSAGE);
+                    }
+
+                    printf("REQ_SENSSTATUS ");
+                    printID(client_ids + i * ID_LENGTH);
+                    printf("\n");
+
+                    int8_t res_sensstatus[2];
+                    if (!client_data[i]){
+                        res_sensstatus[0] = MESSAGE_OK;
+                        res_sensstatus[1] = SENSOR_STATUS_OK;
+                    }
+
+                    else{
+                        int location = requestCheckAlert(p2p_socket, i);
+                        if (location == ERROR_SENSOR_NOT_FOUND){
+                            res_sensstatus[0] = MESSAGE_ERROR;
+                            res_sensstatus[1] = SENSOR_NOT_FOUND;
+                        }
+
+                        else{
+                            if (location < 0) res_sensstatus[0] == MESSAGE_ERROR;
+                            else res_sensstatus[0] = RES_SENSSTATUS;
+                            res_sensstatus[1] = location;
+                        }
+                    }
+
+                    if (send(client_sockets[i], res_sensstatus, 2, 0) == -1){
+                        closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                        if (EXIT_LOGGING) printExitCode(ERROR_SEND);
+                        exit(ERROR_SEND);
+                    }
+                }
             }
         }
     }

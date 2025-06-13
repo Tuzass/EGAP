@@ -1,24 +1,28 @@
 #include "common.h"
 
 void printExitCode(int exit_code){
-    char* error_messages[] = {"SUCCESS",
-                               "UNIDENTIFIED ERROR",
-                               "ERROR IN SOCKET CREATION",
-                               "ERROR IN ADDRESS PARSING",
-                               "ERROR IN SOCKET BINDING",
-                               "ERROR IN SOCKET LISTENING",
-                               "ERROR IN RECEIVE",
-                               "ERROR IN SEND",
-                               "NO PEER ERROR",
-                               "PEER LIMIT EXCEEDED",
-                               "UNEXPECTED MESSAGE",
-                               "ERROR IN SELECT",
-                               "SENSOR LIMIT EXCEEDED",
-                               "NO FREE SENSOR INDEX",
-                               "ERROR IN CLIENT ACCEPT",
-                               "ERROR IN PEER ACCEPT",
-                               "PEER NOT FOUND IN DISCONNECT",
-                               "SENSOR NOT FOUND IN DISCONNECT"};
+    char* error_messages[] = {
+        "SUCCESS",
+        "UNIDENTIFIED ERROR",
+        "ERROR IN SOCKET CREATION",
+        "ERROR IN ADDRESS PARSING",
+        "ERROR IN SOCKET BINDING",
+        "ERROR IN SOCKET LISTENING",
+        "ERROR IN RECEIVE",
+        "ERROR IN SEND",
+        "NO PEER ERROR",
+        "PEER LIMIT EXCEEDED",
+        "UNEXPECTED MESSAGE",
+        "ERROR IN SELECT",
+        "SENSOR LIMIT EXCEEDED",
+        "NO FREE SENSOR INDEX",
+        "ERROR IN CLIENT ACCEPT",
+        "ERROR IN PEER ACCEPT",
+        "PEER NOT FOUND IN DISCONNECT",
+        "SENSOR NOT FOUND IN DISCONNECT",
+        "UNREGISTERED LOCATION ERROR",
+        "UNREGISTERED AREA ERROR"
+    };
     
     printf("Exiting: %s\n", error_messages[-exit_code]);
 }
@@ -91,4 +95,24 @@ void closeSockets(int s1, int s2, int s3, int* socket_array){
         if (socket_array == NULL) break;
         if (socket_array[i] != INACTIVE_SOCKET) close(socket_array[i]);
     }
+}
+
+int getAreaFromLocation(int location){
+    if (location < 1 || location > 10) return ERROR_UNREGISTERED_LOCATION;
+    if (location < 4) return NORTH;
+    if (location < 6) return SOUTH;
+    if (location < 8) return EAST;
+    return WEST;
+}
+
+int getAreaName(int area, char* name){
+    if (area < 1 || area > 4) return ERROR_UNREGISTERED_AREA;
+
+    char* area_names[] = {"Norte", "Sul", "Leste", "Oeste"};
+
+    char* area_name = area_names[area - 1];
+    for (int i = 0; i < strlen(area_name); i++)
+        name[i] = area_name[i];
+    
+    return 0;
 }

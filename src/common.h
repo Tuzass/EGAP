@@ -37,6 +37,8 @@
 #define ERROR_PEER_ACCEPT -15
 #define ERROR_PEER_NOT_FOUND -16
 #define ERROR_SENSOR_NOT_FOUND -17
+#define ERROR_UNREGISTERED_LOCATION -18
+#define ERROR_UNREGISTERED_AREA -19
 
 // protocol message codes
 #define MESSAGE_OK 0
@@ -78,6 +80,12 @@
 #define IDENTITY_LOCATION 1
 #define IDENTITY_NONE 2
 
+// location codes
+#define NORTH 1
+#define SOUTH 2
+#define EAST 3
+#define WEST 4
+
 void printExitCode(int exit_code);
 int stringToAddress(const char* address_string, const char* port_string, struct sockaddr_in* address_storage);
 int addressToString(const struct sockaddr_in* address, char* address_string, size_t string_size, uint16_t* port);
@@ -86,3 +94,5 @@ void printID(const uint8_t* id);
 int compareIDs(const uint8_t* id1, const uint8_t* id2);
 int createSocket(const char* address_string, const char* port_string, struct sockaddr_in* ipv4_address);
 void closeSockets(int s1, int s2, int s3, int* socket_array);
+int getAreaFromLocation(int location);
+int getAreaName(int area, char* name);

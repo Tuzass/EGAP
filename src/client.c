@@ -107,6 +107,19 @@ int requestServerDisconnection(int socket, uint8_t* id){
     return ERROR_UNEXPECTED_MESSAGE;
 }
 
+int requestSensorStatus(int status_server_socket){
+    uint8_t req_sensstatus[1] = {REQ_SENSSTATUS};
+    if (send(status_server_socket, req_sensstatus, 1, 0) == -1) return ERROR_SEND;
+
+    int8_t res_sensstatus[2];
+    if (recv(status_server_socket, res_sensstatus, 2, 0) <= 0) return ERROR_RECEIVE;
+
+    if (res_sensstatus[0] == MESSAGE_OK && res_sensstatus[1] == SENSOR_STATUS_OK) return 0;
+    if (res_sensstatus[0] == MESSAGE_ERROR && res_sensstatus[1] == SENSOR_NOT_FOUND) return ERROR_SENSOR_NOT_FOUND;
+    if (res_sensstatus[0] == RES_SENSSTATUS) return res_sensstatus[1];
+    return ERROR_UNREGISTERED_LOCATION;
+}
+
 int main(int argc, char** argv){
     if (argc < 4){
 		fprintf(stderr,"Correct usage: %s <IP> <status_server_port> <location_server_port>\n", argv[0]);
@@ -174,6 +187,33 @@ int main(int argc, char** argv){
                     exit(ls_rv);
                 }
                 
+                break;
+            }
+
+            if (strncmp(stdin_input, "Check failure", 13) == 0){
+                int status = requestSensorStatus(status_server_socket);
+
+                if (status == ERROR_SENSOR_NOT_FOUND){
+                    printf("Sensor not found\n");
+                    if (EXIT_LOGGING) printExitCode(ERROR_SENSOR_NOT_FOUND);
+                    break;
+                }
+
+                if (status == 0){
+                    printf("Status do sensor 0\n");
+                    continue;
+                }
+
+                if (status < 11){
+                    char area_name[6];
+                    int area = getAreaFromLocation(status);
+                    getAreaName(area, area_name);
+
+                    printf("Alert received from location: %d (%s)\n", area, area_name);
+                    continue;
+                }
+
+                if (EXIT_LOGGING) printExitCode(status);
                 break;
             }
 
