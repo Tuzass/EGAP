@@ -130,7 +130,7 @@ int main(int argc, char** argv){
     printID(id);
     printf("\nSL New ID: ");
     printID(id);
-    printf("\n");
+    printf("\nSuccessful create\n");
 
     fd_set readfds;
     int maxfd = (status_server_socket > location_server_socket ? status_server_socket : location_server_socket);
@@ -183,9 +183,16 @@ int main(int argc, char** argv){
         if (FD_ISSET(status_server_socket, &readfds)){
             uint8_t incoming_message[MAX_BUFFER_SIZE];
             if (recv(status_server_socket, incoming_message, sizeof(incoming_message) - 1, 0) <= 0){
-                close(status_server_socket);
                 if (EXIT_LOGGING) printExitCode(ERROR_RECEIVE);
-                exit(ERROR_RECEIVE);
+                break;
+            }
+
+            if (incoming_message[0] = REQ_SERVERIDENTITY){
+                uint8_t res_serveridentity[2] = {RES_SERVERIDENTITY, IDENTITY_STATUS};
+                if (send(status_server_socket, res_serveridentity, 2, 0) == -1){
+                    if (EXIT_LOGGING) printExitCode(ERROR_SEND);
+                    break;
+                }
             }
         }
 
@@ -195,6 +202,14 @@ int main(int argc, char** argv){
                 close(location_server_socket);
                 if (EXIT_LOGGING) printExitCode(ERROR_RECEIVE);
                 exit(ERROR_RECEIVE);
+            }
+
+            if (incoming_message[0] = REQ_SERVERIDENTITY){
+                uint8_t res_serveridentity[2] = {RES_SERVERIDENTITY, IDENTITY_LOCATION};
+                if (send(location_server_socket, res_serveridentity, 2, 0) == -1){
+                    if (EXIT_LOGGING) printExitCode(ERROR_SEND);
+                    break;
+                }
             }
         }
     }

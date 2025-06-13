@@ -329,6 +329,28 @@ int acceptPeerDisconnection(int p2p_socket, uint8_t* req_discpeer, uint8_t* peer
     return 0;
 }
 
+int requestIdentityFromPeer(int p2p_socket){
+    uint8_t req_serveridentity[1] = {REQ_SERVERIDENTITY};
+    if (send(p2p_socket, req_serveridentity, 1, 0) == -1) return ERROR_SEND;
+
+    uint8_t res_serveridentity[2];
+    if (recv(p2p_socket, res_serveridentity, 2, 0) <= 0) return ERROR_RECEIVE;
+    if (res_serveridentity[0] != RES_SERVERIDENTITY) return ERROR_UNEXPECTED_MESSAGE;
+
+    return res_serveridentity[1];
+}
+
+int requestIdentityFromClient(int client_socket){
+    uint8_t req_serveridentity[1] = {REQ_SERVERIDENTITY};
+    if (send(client_socket, req_serveridentity, 1, 0) == -1) return ERROR_SEND;
+
+    uint8_t res_serveridentity[2];
+    if (recv(client_socket, res_serveridentity, 2, 0) <= 0) return ERROR_RECEIVE;
+    if (res_serveridentity[0] != RES_SERVERIDENTITY) return ERROR_UNEXPECTED_MESSAGE;
+
+    return res_serveridentity[1];
+}
+
 int main(int argc, char** argv){
     srand(time(NULL));
 
@@ -353,6 +375,7 @@ int main(int argc, char** argv){
         exit(p2p_socket);
     }
 
+    int identity = IDENTITY_NONE;
     int p2p_listen_socket = INACTIVE_SOCKET;
     int current_p2p_connections = 0;
     int current_client_connections = 0;
@@ -377,7 +400,12 @@ int main(int argc, char** argv){
         if (should_attempt_peer_connection){
             int rv = connectToPeer(p2p_socket, &p2p_address, &has_generated_id, id, peer_id);
 
-            if (!rv) current_p2p_connections++;
+            if (!rv){
+                int peer_identity = requestIdentityFromPeer(p2p_socket);
+                if (peer_identity != IDENTITY_NONE) identity = 1 - peer_identity;
+                printf("My identity: %d\n", identity);
+                current_p2p_connections++;
+            }
 
             else if (rv == ERROR_NO_PEER){
                 close(p2p_socket);
@@ -456,7 +484,19 @@ int main(int argc, char** argv){
                 printf("Client ");
                 printID(client_ids + new_client_index * ID_LENGTH);
                 printf(" added (Loc %d)\n", 0);
+
+                if (identity == IDENTITY_NONE){
+                    identity = requestIdentityFromClient(client_sockets[new_client_index]);
+                    if (identity < 0){
+                        closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                        if (EXIT_LOGGING) printExitCode(identity);
+                        exit(identity);
+                    }
+                    printf("My identity: %d\n", identity);
+                }
+
                 current_client_connections++;
+                continue;
             }
             
             else if (new_client_index == ERROR_SENSOR_LIMIT){
@@ -532,6 +572,16 @@ int main(int argc, char** argv){
                 closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
                 if (EXIT_LOGGING) printExitCode(rv);
                 exit(rv);
+            }
+
+            if (incoming_message[0] == REQ_SERVERIDENTITY){
+                uint8_t res_serveridentity[2] = {RES_SERVERIDENTITY, identity};
+                printf("My identity: %d\n", identity);
+                if (send(p2p_socket, res_serveridentity, 2, 0) == -1){
+                    closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                    if (EXIT_LOGGING) printExitCode(ERROR_SEND);
+                    exit(ERROR_SEND);
+                }
             }
         }
 

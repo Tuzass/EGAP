@@ -46,8 +46,18 @@
 #define REQ_CONNSEN 23
 #define RES_CONNSEN 24
 #define REQ_DISCSEN 25
+#define REQ_CHECKALERT 36
+#define RES_CHECKALERT 37
+#define REQ_SENSLOC 38
+#define RES_SENSLOC 39
+#define REQ_SENSSTATUS 40
+#define RES_SENSSTATUS 41
+#define REQ_LOCLIST 42
+#define RES_LOCLIST 43
 #define REQ_VALIDATEID 50
 #define RES_VALIDATEID 51
+#define REQ_SERVERIDENTITY 60
+#define RES_SERVERIDENTITY 61
 #define MESSAGE_ERROR 255
 
 // protocol ERROR codes
@@ -64,6 +74,9 @@
 #define SUCCESSFUL_CONNECT 4
 #define UNIQUE 60
 #define NOT_UNIQUE 61
+#define IDENTITY_STATUS 0
+#define IDENTITY_LOCATION 1
+#define IDENTITY_NONE 2
 
 void printExitCode(int exit_code);
 int stringToAddress(const char* address_string, const char* port_string, struct sockaddr_in* address_storage);
