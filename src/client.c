@@ -1,20 +1,5 @@
 #include "common.h"
 
-int createSocket(const char* address_string, const char* port_string, struct sockaddr_in* ipv4_address){
-    int s = socket(AF_INET, SOCK_STREAM, 0);
-    if (s == -1){
-        fprintf(stderr, "Client socket initialization failed\n");
-        exit(EXIT_FAILURE);
-    }
-
-    if (stringToAddress(address_string, port_string, ipv4_address)){
-        fprintf(stderr, "Failed to interpret IPv4 address\n");
-		exit(EXIT_FAILURE);
-    }
-
-    return s;
-}
-
 uint8_t requestValidateID(int socket, uint8_t* validateid_request){
     uint8_t response[MAX_BUFFER_SIZE];
 
