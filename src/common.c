@@ -111,8 +111,9 @@ int getAreaName(int area, char* name){
     char* area_names[] = {"Norte", "Sul", "Leste", "Oeste"};
 
     char* area_name = area_names[area - 1];
-    for (int i = 0; i < strlen(area_name); i++)
+    for (int i = 0; i < strlen(area_name) + 1; i++)
         name[i] = area_name[i];
     
+    printf("Area name: %s\n", area_name);
     return 0;
 }

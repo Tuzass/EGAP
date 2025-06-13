@@ -120,6 +120,17 @@ int requestSensorStatus(int status_server_socket){
     return ERROR_UNREGISTERED_LOCATION;
 }
 
+int requestSensorLocation(int status_server_socket, uint8_t* req_sensloc){
+    if (send(status_server_socket, req_sensloc, ID_LENGTH + 1, 0) == -1) return ERROR_SEND;
+
+    int8_t res_sensloc[2];
+    if (recv(status_server_socket, res_sensloc, 2, 0) <= 0) return ERROR_RECEIVE;
+
+    if (res_sensloc[0] == MESSAGE_ERROR && res_sensloc[1] == SENSOR_NOT_FOUND) return ERROR_SENSOR_NOT_FOUND;
+    if (res_sensloc[0] == RES_SENSLOC) return res_sensloc[1];
+    return ERROR_UNREGISTERED_LOCATION;
+}
+
 int main(int argc, char** argv){
     if (argc < 4){
 		fprintf(stderr,"Correct usage: %s <IP> <status_server_port> <location_server_port>\n", argv[0]);
@@ -214,6 +225,29 @@ int main(int argc, char** argv){
                 }
 
                 if (EXIT_LOGGING) printExitCode(status);
+                break;
+            }
+
+            if (strncmp(stdin_input, "locate ", 7) == 0){
+                uint8_t req_sensloc[ID_LENGTH + 1];
+                req_sensloc[0] = REQ_SENSLOC;
+                for (int i = 0; i < ID_LENGTH; i++)
+                    req_sensloc[i + 1] = stdin_input[i + 7];
+
+                int location = requestSensorLocation(location_server_socket, req_sensloc);
+
+                if (location == ERROR_SENSOR_NOT_FOUND){
+                    printf("Sensor not found\n");
+                    if (EXIT_LOGGING) printExitCode(ERROR_SENSOR_NOT_FOUND);
+                    break;
+                }
+
+                if (location > 0 && location < 11){
+                    printf("Current sensor location: %d\n", location);
+                    continue;
+                }
+
+                if (EXIT_LOGGING) printExitCode(location);
                 break;
             }
 

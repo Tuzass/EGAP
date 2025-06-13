@@ -700,6 +700,36 @@ int main(int argc, char** argv){
                         exit(ERROR_SEND);
                     }
                 }
+
+                if (incoming_message[0] == REQ_SENSLOC){
+                    if (identity != IDENTITY_LOCATION){
+                        closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                        if (EXIT_LOGGING) printExitCode(ERROR_UNEXPECTED_MESSAGE);
+                        exit(ERROR_UNEXPECTED_MESSAGE);
+                    }
+
+                    printf("REQ_SENSLOC ");
+                    printID(incoming_message + 1);
+                    printf("\n");
+
+                    int8_t res_sensloc[2];
+                    for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++){
+                        if (compareIDs(incoming_message + 1, client_ids + i * ID_LENGTH)){
+                            res_sensloc[0] = RES_SENSLOC;
+                            res_sensloc[1] = client_data[i];
+                            break;
+                        }
+
+                        res_sensloc[0] = MESSAGE_ERROR;
+                        res_sensloc[1] = SENSOR_NOT_FOUND;
+                    }
+
+                    if (send(client_sockets[i], res_sensloc, 2, 0) == -1){
+                        closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                        if (EXIT_LOGGING) printExitCode(ERROR_SEND);
+                        exit(ERROR_SEND);
+                    }
+                }
             }
         }
     }
