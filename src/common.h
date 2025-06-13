@@ -11,7 +11,7 @@
 #include <netinet/in.h>
 
 // constants
-#define ERROR_LOGGING 1
+#define EXIT_LOGGING 1
 #define MAX_MESSAGE_SIZE 500
 #define ID_LENGTH 10
 #define MAX_BUFFER_SIZE MAX_MESSAGE_SIZE + 4
@@ -35,6 +35,8 @@
 #define ERROR_NO_FREE_INDEX -13
 #define ERROR_CLIENT_ACCEPT -14
 #define ERROR_PEER_ACCEPT -15
+#define ERROR_PEER_NOT_FOUND -16
+#define ERROR_SENSOR_NOT_FOUND -17
 
 // protocol message codes
 #define MESSAGE_OK 0

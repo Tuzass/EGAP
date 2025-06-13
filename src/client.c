@@ -22,7 +22,7 @@ uint8_t requestValidateID(int socket, uint8_t* validateid_request){
     return response[1];
 }
 
-void requestConnection(int socket, uint8_t* connection_request){
+void requestServerConnection(int socket, uint8_t* connection_request){
     uint8_t response[MAX_BUFFER_SIZE];
 
     if (send(socket, connection_request, ID_LENGTH + 1, 0) == -1){
@@ -42,7 +42,7 @@ void requestConnection(int socket, uint8_t* connection_request){
     }
 }
 
-void sendValidID(int status_server_socket, int location_server_socket){
+void sendValidID(int status_server_socket, int location_server_socket, uint8_t* id){
     uint8_t validateid_request[ID_LENGTH + 1];
     validateid_request[0] = REQ_VALIDATEID;
     
@@ -60,11 +60,13 @@ void sendValidID(int status_server_socket, int location_server_socket){
 
     uint8_t connection_request[ID_LENGTH + 1];
     connection_request[0] = REQ_CONNSEN;
-    for (int i = 0; i < ID_LENGTH; i++)
+    for (int i = 0; i < ID_LENGTH; i++){
+        id[i] = validateid_request[i + 1];
         connection_request[i + 1] = validateid_request[i + 1];
+    }
     
-    requestConnection(status_server_socket, connection_request);
-    requestConnection(location_server_socket, connection_request);
+    requestServerConnection(status_server_socket, connection_request);
+    requestServerConnection(location_server_socket, connection_request);
 }
 
 void connectToServer(int server_socket, struct sockaddr_in* server_address){
@@ -89,6 +91,26 @@ void connectToServer(int server_socket, struct sockaddr_in* server_address){
     }
 }
 
+int requestServerDisconnection(int socket, uint8_t* id){
+    uint8_t req_discsen[ID_LENGTH + 1];
+    req_discsen[0] = REQ_DISCSEN;
+    for (int i = 0; i < ID_LENGTH; i++)
+        req_discsen[i + 1] = id[i];
+
+    if (send(socket, req_discsen, ID_LENGTH + 1, 0) == -1) return ERROR_SEND;
+
+    uint8_t res_discsen[ID_LENGTH + 1];
+    if (recv(socket, res_discsen, ID_LENGTH + 1, 0) <= 0) return ERROR_RECEIVE;
+
+    if (res_discsen[0] == MESSAGE_OK && res_discsen[1] == SUCCESSFUL_DISCONNECT) return 0;
+    if (res_discsen[0] == MESSAGE_ERROR && res_discsen[1] == SENSOR_NOT_FOUND){
+        printf("Sensor not found\n");
+        return ERROR_SENSOR_NOT_FOUND;
+    }
+
+    return ERROR_UNEXPECTED_MESSAGE;
+}
+
 int main(int argc, char** argv){
     if (argc < 4){
 		fprintf(stderr,"Correct usage: %s <IP> <status_server_port> <location_server_port>\n", argv[0]);
@@ -105,10 +127,16 @@ int main(int argc, char** argv){
     int location_server_socket = createSocket(argv[1], argv[3], &location_server_address);
     connectToServer(location_server_socket, &location_server_address);
 
-    sendValidID(status_server_socket, location_server_socket);
+    uint8_t id[ID_LENGTH];
+    sendValidID(status_server_socket, location_server_socket, id);
+
+    printf("SS New ID: ");
+    printID(id);
+    printf("\nSL New ID: ");
+    printID(id);
+    printf("\n");
 
     fd_set readfds;
-    char buffer[MAX_BUFFER_SIZE];
     int maxfd = (status_server_socket > location_server_socket ? status_server_socket : location_server_socket);
 
     while (1){
@@ -117,20 +145,30 @@ int main(int argc, char** argv){
         if (status_server_socket != INACTIVE_SOCKET) FD_SET(status_server_socket, &readfds);
         if (location_server_socket != INACTIVE_SOCKET) FD_SET(location_server_socket, &readfds);
 
-        printf("Waiting on current connections\n");
         int ready = select(maxfd + 1, &readfds, NULL, NULL, NULL);
         if (ready < 0){
             fprintf(stderr, "Failed to wait on current connections\n");
             break;
         }
-        printf("Something happened on ");
 
         if (FD_ISSET(0, &readfds)){
-            printf("the terminal\n");
-            if (fgets(buffer, sizeof(buffer), stdin) == NULL) break;
+            char stdin_input[256];
+            if (fgets(stdin_input, sizeof(stdin_input), stdin) == NULL) break;
+            if (strncmp(stdin_input, "kill", 4) == 0){
+                int ss_rv = requestServerDisconnection(status_server_socket, id);
+                if (!ss_rv) printf("SS Successful disconnect\n");
+                else{
+                    if (EXIT_LOGGING) printExitCode(ss_rv);
+                    exit(ss_rv);
+                }
 
-            if (strncmp(buffer, "kill", 4) == 0){
-                // sends a custom protocol message to warn server about disconnect
+                int ls_rv = requestServerDisconnection(location_server_socket, id);
+                if (!ls_rv) printf("SL Successful disconnect\n");
+                else{
+                    if (EXIT_LOGGING) printExitCode(ls_rv);
+                    exit(ls_rv);
+                }
+                
                 break;
             }
 
@@ -138,31 +176,24 @@ int main(int argc, char** argv){
         }
 
         if (FD_ISSET(status_server_socket, &readfds)){
-            printf("the status server\n");
-            int n = recv(status_server_socket, buffer, sizeof(buffer) - 1, 0);
-
-            if (n <= 0){
-                printf("Status server disconnected.\n");
+            uint8_t incoming_message[MAX_BUFFER_SIZE];
+            if (recv(status_server_socket, incoming_message, sizeof(incoming_message) - 1, 0) <= 0){
                 close(status_server_socket);
-                status_server_socket = INACTIVE_SOCKET;
-                continue;
+                if (EXIT_LOGGING) printExitCode(ERROR_RECEIVE);
+                exit(ERROR_RECEIVE);
             }
         }
 
         if (FD_ISSET(location_server_socket, &readfds)){
-            printf("the location server\n");
-            int n = recv(location_server_socket, buffer, sizeof(buffer) - 1, 0);
-
-            if (n <= 0){
-                printf("Location server disconnected.\n");
+            uint8_t incoming_message[MAX_BUFFER_SIZE];
+            if (recv(location_server_socket, incoming_message, sizeof(incoming_message) - 1, 0) <= 0){
                 close(location_server_socket);
-                location_server_socket = INACTIVE_SOCKET;
-                continue;
+                if (EXIT_LOGGING) printExitCode(ERROR_RECEIVE);
+                exit(ERROR_RECEIVE);
             }
         }
     }
 
-    printf("Closing client\n");
     close(status_server_socket);
     close(location_server_socket);
     return 0;

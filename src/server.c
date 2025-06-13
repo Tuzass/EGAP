@@ -23,9 +23,7 @@ int connectToPeer(int p2p_socket, struct sockaddr_in* p2p_address, int* has_gene
     if (connect(p2p_socket, (struct sockaddr*)p2p_address, sizeof(struct sockaddr_in)) == -1) return ERROR_NO_PEER;
 
     uint8_t response[MAX_BUFFER_SIZE];
-    int bytes_received = recv(p2p_socket, response, 2, 0);
-    if (bytes_received <= 0) return ERROR_RECEIVE;
-
+    if (recv(p2p_socket, response, 2, 0) <= 0) return ERROR_RECEIVE;
     if (response[0] == MESSAGE_ERROR && response[1] == PEER_LIMIT_EXCEEDED) return ERROR_PEER_LIMIT;
 
     if (response[0] == MESSAGE_OK && response[1] == SUCCESSFUL_CONNECT){
@@ -42,9 +40,7 @@ int connectToPeer(int p2p_socket, struct sockaddr_in* p2p_address, int* has_gene
             }
             
             if (send(p2p_socket, peer_connection_request, ID_LENGTH + 1, 0) == -1) return ERROR_SEND;
-
-            bytes_received = recv(p2p_socket, response, ID_LENGTH + 1, 0);
-            if (bytes_received <= 0) ERROR_RECEIVE;
+            if (recv(p2p_socket, response, ID_LENGTH + 1, 0) <= 0) ERROR_RECEIVE;
 
             if (response[0] == RES_VALIDATEID && response[1] == NOT_UNIQUE) continue;
             if (response[0] == RES_VALIDATEID && response[1] == UNIQUE) break;
@@ -59,9 +55,7 @@ int connectToPeer(int p2p_socket, struct sockaddr_in* p2p_address, int* has_gene
 
         peer_connection_request[0] = REQ_CONNPEER;
         if (send(p2p_socket, peer_connection_request, ID_LENGTH + 1, 0) == -1) return ERROR_SEND;
-
-        bytes_received = recv(p2p_socket, response, ID_LENGTH + 1, 0);
-        if (bytes_received <= 0) return ERROR_RECEIVE;
+        if (recv(p2p_socket, response, ID_LENGTH + 1, 0) <= 0) return ERROR_RECEIVE;
 
         if (response[0] == RES_CONNPEER){
             printf("Peer ");
@@ -113,9 +107,7 @@ int findFreeSensorIndex(int* client_sockets){
 int validateClientID(int new_client_socket, int* client_sockets, uint8_t* client_ids){
     while (1){
         uint8_t validateid_request[ID_LENGTH + 1];
-        int bytes_received = recv(new_client_socket, validateid_request, ID_LENGTH + 1, 0);
-
-        if (bytes_received <= 0){
+        if (recv(new_client_socket, validateid_request, ID_LENGTH + 1, 0) <= 0){
             close(new_client_socket);
             return ERROR_RECEIVE;
         }
@@ -182,8 +174,7 @@ int acceptClientConnection(int client_listen_socket, int current_client_connecti
     }
 
     uint8_t req_connsen[ID_LENGTH + 1];
-    int bytes_received = recv(new_client_socket, req_connsen, ID_LENGTH + 1, 0);
-    if (bytes_received <= 0){
+    if (recv(new_client_socket, req_connsen, ID_LENGTH + 1, 0) <= 0){
         close(new_client_socket);
         return ERROR_RECEIVE;
     }
@@ -210,8 +201,7 @@ int acceptClientConnection(int client_listen_socket, int current_client_connecti
 int validatePeerID(int new_p2p_socket, uint8_t* id){
     while(1){
         uint8_t validateid_request[ID_LENGTH + 1];
-        int bytes_received = recv(new_p2p_socket, validateid_request, ID_LENGTH + 1, 0);
-        if (bytes_received <= 0){
+        if (recv(new_p2p_socket, validateid_request, ID_LENGTH + 1, 0) <= 0){
             close(new_p2p_socket);
             return ERROR_RECEIVE;
         }
@@ -266,8 +256,7 @@ int acceptPeerConnection(int p2p_listen_socket, int current_p2p_connections, uin
     int rv = validatePeerID(new_p2p_socket, id);
 
     uint8_t req_connpeer[ID_LENGTH + 1];
-    int bytes_received = recv(new_p2p_socket, req_connpeer, ID_LENGTH + 1, 0);
-    if (bytes_received <= 0){
+    if (recv(new_p2p_socket, req_connpeer, ID_LENGTH + 1, 0) <= 0){
         close(new_p2p_socket);
         return ERROR_RECEIVE;
     }
@@ -293,19 +282,66 @@ int acceptPeerConnection(int p2p_listen_socket, int current_p2p_connections, uin
     return new_p2p_socket;
 }
 
+int acceptClientDisconnection(int client_socket, uint8_t* req_discsen, uint8_t* client_id){
+    if (!compareIDs(client_id, req_discsen + 1)){
+        uint8_t res_discsen[2] = {MESSAGE_ERROR, SENSOR_NOT_FOUND};
+        if (send(client_socket, res_discsen, 2, 0) == -1) return ERROR_SEND;
+        return SENSOR_NOT_FOUND;
+    }
+
+    uint8_t res_discsen[2] = {MESSAGE_OK, SUCCESSFUL_DISCONNECT};
+    if (send(client_socket, res_discsen, 2, 0) == -1) return ERROR_SEND;
+    return 0;
+}
+
+int requestPeerDisconnection(int p2p_socket, uint8_t* id){
+    uint8_t req_discpeer[ID_LENGTH + 1];
+    req_discpeer[0] = REQ_DISCPEER;
+    for (int i = 0; i < ID_LENGTH; i++)
+        req_discpeer[i + 1] = id[i];
+    
+    if (send(p2p_socket, req_discpeer, ID_LENGTH + 1, 0) == -1) return ERROR_SEND;
+
+    uint8_t res_discpeer[2];
+    if (recv(p2p_socket, res_discpeer, 2, 0) <= 0) return ERROR_RECEIVE;
+    if (res_discpeer[0] == MESSAGE_ERROR && res_discpeer[1] == PEER_NOT_FOUND){
+        printf("Peer not found\n");
+        return ERROR_PEER_NOT_FOUND;
+    }
+
+    if (res_discpeer[0] == MESSAGE_OK && res_discpeer[1] == SUCCESSFUL_DISCONNECT){
+        printf("Successful disconnect\n");
+        return 0;
+    }
+
+    return ERROR_UNEXPECTED_MESSAGE;
+}
+
+int acceptPeerDisconnection(int p2p_socket, uint8_t* req_discpeer, uint8_t* peer_id){
+    if (!compareIDs(peer_id, req_discpeer + 1)){
+        uint8_t res_discpeer[2] = {MESSAGE_ERROR, PEER_NOT_FOUND};
+        if (send(p2p_socket, res_discpeer, 2, 0) == -1) return ERROR_SEND;
+        return PEER_NOT_FOUND;
+    }
+
+    uint8_t res_discpeer[2] = {MESSAGE_OK, SUCCESSFUL_DISCONNECT};
+    if (send(p2p_socket, res_discpeer, 2, 0) == -1) return ERROR_SEND;
+    return 0;
+}
+
 int main(int argc, char** argv){
     srand(time(NULL));
 
     if (argc < 4){
 		fprintf(stderr, "Correct usage: %s <IP> <p2p_port> <client_port>\n", argv[0]);
-        if (ERROR_LOGGING) printExitCode(ERROR_USAGE);
+        if (EXIT_LOGGING) printExitCode(ERROR_USAGE);
 		exit(ERROR_USAGE);
 	}
     
     struct sockaddr_in client_address;
     int client_listen_socket = createListenSocket(argv[1], argv[3], &client_address);
     if (client_listen_socket < 0){
-        if (ERROR_LOGGING) printExitCode(client_listen_socket);
+        if (EXIT_LOGGING) printExitCode(client_listen_socket);
         exit(client_listen_socket);
     }
 
@@ -313,7 +349,7 @@ int main(int argc, char** argv){
     int p2p_socket = createSocket(argv[1], argv[2], &p2p_address);
     if (p2p_socket < 0){
         close(client_listen_socket);
-        if (ERROR_LOGGING) printExitCode(p2p_socket);
+        if (EXIT_LOGGING) printExitCode(p2p_socket);
         exit(p2p_socket);
     }
 
@@ -359,13 +395,13 @@ int main(int argc, char** argv){
 
             else if (rv == ERROR_PEER_LIMIT){
                 printf("Peer limit exceeded\n");
-                if (ERROR_LOGGING) printExitCode(rv);
+                if (EXIT_LOGGING) printExitCode(rv);
                 exit(rv);
             }
 
             else{
                 closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
-                if (ERROR_LOGGING) printExitCode(rv);
+                if (EXIT_LOGGING) printExitCode(rv);
                 exit(rv);
             }
         }
@@ -374,7 +410,7 @@ int main(int argc, char** argv){
         int activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);
         if (activity < 0){
             closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
-            if (ERROR_LOGGING) printExitCode(ERROR_SELECT);
+            if (EXIT_LOGGING) printExitCode(ERROR_SELECT);
             exit(ERROR_SELECT);
         }
 
@@ -383,7 +419,19 @@ int main(int argc, char** argv){
             if (fgets(stdin_input, sizeof(stdin_input), stdin) == NULL) break;
 
             if (strncmp(stdin_input, "kill", 4) == 0){
-                // sends a custom protocol message to peer requesting to disconnect
+                if (current_p2p_connections == 0) break;
+
+                int rv = requestPeerDisconnection(p2p_socket, id);
+                if (rv){
+                    closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                    if (EXIT_LOGGING) printExitCode(rv);
+                    exit(rv);
+                }
+
+                printf("Peer ");
+                printID(peer_id);
+                printf(" disconnected\n");
+
                 break;
             }
 
@@ -408,7 +456,7 @@ int main(int argc, char** argv){
 
             else{
                 closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
-                if (ERROR_LOGGING) printExitCode(new_client_index);
+                if (EXIT_LOGGING) printExitCode(new_client_index);
                 exit(new_client_index);
             }
         }
@@ -436,58 +484,82 @@ int main(int argc, char** argv){
 
             else{
                 closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
-                if (ERROR_LOGGING) printExitCode(p2p_socket);
+                if (EXIT_LOGGING) printExitCode(p2p_socket);
                 exit(p2p_socket);
             }
             */
 
             else if (p2p_socket != ERROR_PEER_LIMIT){
                 closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
-                if (ERROR_LOGGING) printExitCode(p2p_socket);
+                if (EXIT_LOGGING) printExitCode(p2p_socket);
                 exit(p2p_socket);
             }
         }
 
         if (p2p_socket != INACTIVE_SOCKET && FD_ISSET(p2p_socket, &readfds)){
             char incoming_message[MAX_BUFFER_SIZE];
-            int bytes_received = recv(p2p_socket, incoming_message, sizeof(incoming_message) - 1, 0);
+            if (recv(p2p_socket, incoming_message, sizeof(incoming_message) - 1, 0) <= 0){
+                closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                if (EXIT_LOGGING) printExitCode(ERROR_RECEIVE);
+                exit(ERROR_RECEIVE);
+            }
 
-            if (bytes_received <= 0){
-                // peer disconnected
-                p2p_socket = INACTIVE_SOCKET;
-                current_p2p_connections--;
-                if (p2p_listen_socket != INACTIVE_SOCKET) printf("No peer found, starting to listen...\n");
-                continue;
+            if (incoming_message[0] == REQ_DISCPEER){
+                int rv = acceptPeerDisconnection(p2p_socket, incoming_message, peer_id);
+
+                if (!rv){
+                    printf("Peer ");
+                    printID(peer_id);
+                    printf(" disconnected\n");
+
+                    close(p2p_socket);
+                    p2p_socket = INACTIVE_SOCKET;
+                    current_p2p_connections--;
+                    if (p2p_listen_socket != INACTIVE_SOCKET) printf("No peer found, starting to listen...\n");
+                    continue;
+                }
+
+                closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                if (EXIT_LOGGING) printExitCode(rv);
+                exit(rv);
             }
         }
 
         for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++){
             if (client_sockets[i] != INACTIVE_SOCKET && FD_ISSET(client_sockets[i], &readfds)){
                 char incoming_message[MAX_BUFFER_SIZE];
-                int bytes_received = recv(client_sockets[i], incoming_message, sizeof(incoming_message) - 1, 0);
-                
-                if (bytes_received <= 0){
-                    printf("Client %d disconnected\n", i);
-                    close(client_sockets[i]);
-                    client_sockets[i] = INACTIVE_SOCKET;
-                    current_client_connections--;
-                    continue;
+                if (recv(client_sockets[i], incoming_message, sizeof(incoming_message) - 1, 0) <= 0){
+                    closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                    if (EXIT_LOGGING) printExitCode(ERROR_RECEIVE);
+                    exit(ERROR_RECEIVE);
                 }
+
+                if (incoming_message[0] == REQ_DISCSEN){
+                    int rv = acceptClientDisconnection(client_sockets[i], incoming_message, client_ids + i * ID_LENGTH);
+                    if (!rv){
+                        printf("Client ");
+                        printID(client_ids + i * ID_LENGTH);
+                        printf(" disconnected (Loc 0)\n");
+
+                        close(client_sockets[i]);
+                        client_sockets[i] = INACTIVE_SOCKET;
+                        current_client_connections--;
+                        continue;
+                    }
+
+                    closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                    if (EXIT_LOGGING) printExitCode(rv);
+                    exit(rv);
+                }
+
+                printf("Peer ");
+                printID(peer_id);
+                printf(" disconnected\n");
             }
         }
     }
 
-    close(client_listen_socket);
-    if (p2p_listen_socket != INACTIVE_SOCKET) close(p2p_listen_socket);
-    if (p2p_socket != INACTIVE_SOCKET) close(p2p_socket);
-
-    for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++){
-        if (client_sockets[i] != INACTIVE_SOCKET){
-            printf("Connection with client %d closed\n", i);
-            close(client_sockets[i]);
-            client_sockets[i] = INACTIVE_SOCKET;
-        }
-    }
-
+    closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+    if (EXIT_LOGGING) printExitCode(0);
     return 0;
 }

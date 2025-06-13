@@ -16,7 +16,9 @@ void printExitCode(int exit_code){
                                "SENSOR LIMIT EXCEEDED",
                                "NO FREE SENSOR INDEX",
                                "ERROR IN CLIENT ACCEPT",
-                               "ERROR IN PEER ACCEPT"};
+                               "ERROR IN PEER ACCEPT",
+                               "PEER NOT FOUND IN DISCONNECT",
+                               "SENSOR NOT FOUND IN DISCONNECT"};
     
     printf("Exiting: %s\n", error_messages[-exit_code]);
 }
