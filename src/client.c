@@ -256,12 +256,16 @@ int main(int argc, char** argv){
 
                 if (location == ERROR_SENSOR_NOT_FOUND){
                     printf("Sensor not found\n");
-                    if (EXIT_LOGGING) printExitCode(ERROR_SENSOR_NOT_FOUND);
-                    break;
+                    continue;
                 }
 
                 if (location > 0 && location < 11){
                     printf("Current sensor location: %d\n", location);
+                    continue;
+                }
+
+                if (location == -1){
+                    printf("Sensor outside registered regions\n");
                     continue;
                 }
 
@@ -275,12 +279,16 @@ int main(int argc, char** argv){
                 req_loclist[1] = stdin_input[9];
                 req_loclist[2] = stdin_input[10];
 
+                if (req_loclist[1] < '0' || req_loclist[1] > '9' || req_loclist[2] < '0' || req_loclist[2] > '9'){
+                    printf("Invalid location\n");
+                    continue;
+                }
+
                 uint8_t sensor_id_list[MAX_CLIENT_SERVER_CONNECTIONS * ID_LENGTH];
                 int num_sensors = requestDiagnostic(location_server_socket, req_loclist, sensor_id_list);
                 if (num_sensors == ERROR_LOCATION_NOT_FOUND){
                     printf("Location not found\n");
-                    if (EXIT_LOGGING) printExitCode(ERROR_LOCATION_NOT_FOUND);
-                    break;
+                    continue;
                 }
 
                 if (num_sensors == 0){
@@ -305,7 +313,7 @@ int main(int argc, char** argv){
                 break;
             }
 
-            printf("Use 'kill' to exit\n");
+            printf("Unknown command; use 'kill' to exit\n");
         }
 
         if (FD_ISSET(status_server_socket, &readfds)){

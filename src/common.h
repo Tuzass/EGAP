@@ -11,7 +11,7 @@
 #include <netinet/in.h>
 
 // constants
-#define EXIT_LOGGING 1
+#define EXIT_LOGGING 0
 #define MAX_MESSAGE_SIZE 500
 #define ID_LENGTH 10
 #define MAX_BUFFER_SIZE MAX_MESSAGE_SIZE + 1

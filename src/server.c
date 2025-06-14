@@ -194,9 +194,9 @@ int acceptClientConnection(int client_listen_socket, int current_client_connecti
         return ERROR_UNEXPECTED_MESSAGE;
     }
 
-    uint8_t res_connsen[ID_LENGTH + 1];
+    uint8_t res_connsen[1] = {RES_CONNSEN};
     res_connsen[0] = RES_CONNSEN;
-    if (send(new_client_socket, res_connsen, ID_LENGTH + 1, 0) == -1){
+    if (send(new_client_socket, res_connsen, 1, 0) == -1){
         close(new_client_socket);
         return ERROR_SEND;
     }
@@ -363,7 +363,7 @@ int requestIdentityFromClient(int client_socket){
 
 int requestCheckAlert(int p2p_socket, int client_index){
     uint8_t req_checkalert[2] = {REQ_CHECKALERT, client_index};
-    if (send(p2p_socket, req_checkalert, ID_LENGTH + 1, 0) == -1) return ERROR_SEND;
+    if (send(p2p_socket, req_checkalert, 2, 0) == -1) return ERROR_SEND;
 
     int8_t res_checkalert[2];
     if (recv(p2p_socket, res_checkalert, 2, 0) <= 0) return ERROR_RECEIVE;
@@ -497,7 +497,7 @@ int main(int argc, char** argv){
                 break;
             }
 
-            printf("Use 'kill' to exit; If you don't want to exit in the case there is no peer, use 'close connection' instead \n");
+            printf("Unknown command; use 'kill' to exit\n");
         }
 
         if (FD_ISSET(client_listen_socket, &readfds)){
