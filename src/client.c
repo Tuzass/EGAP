@@ -117,7 +117,7 @@ int requestSensorStatus(int status_server_socket){
     if (res_sensstatus[0] == MESSAGE_OK && res_sensstatus[1] == SENSOR_STATUS_OK) return 0;
     if (res_sensstatus[0] == MESSAGE_ERROR && res_sensstatus[1] == SENSOR_NOT_FOUND) return ERROR_SENSOR_NOT_FOUND;
     if (res_sensstatus[0] == RES_SENSSTATUS) return res_sensstatus[1];
-    return ERROR_UNREGISTERED_LOCATION;
+    return ERROR_LOCATION_NOT_FOUND;
 }
 
 int requestSensorLocation(int status_server_socket, uint8_t* req_sensloc){
@@ -128,7 +128,25 @@ int requestSensorLocation(int status_server_socket, uint8_t* req_sensloc){
 
     if (res_sensloc[0] == MESSAGE_ERROR && res_sensloc[1] == SENSOR_NOT_FOUND) return ERROR_SENSOR_NOT_FOUND;
     if (res_sensloc[0] == RES_SENSLOC) return res_sensloc[1];
-    return ERROR_UNREGISTERED_LOCATION;
+    return ERROR_LOCATION_NOT_FOUND;
+}
+
+int requestDiagnostic(int location_server_socket, uint8_t* req_loclist, uint8_t* sensor_id_list){
+    if (send(location_server_socket, req_loclist, 3, 0) == -1) return ERROR_SEND;
+
+    uint8_t res_loclist[MAX_CLIENT_SERVER_CONNECTIONS * ID_LENGTH + 1];
+    int bytes_received = recv(location_server_socket, res_loclist, MAX_CLIENT_SERVER_CONNECTIONS * ID_LENGTH + 1, 0);
+
+    if (bytes_received <= 0) return ERROR_RECEIVE;
+    if (res_loclist[0] == MESSAGE_ERROR && res_loclist[1] == LOCATION_NOT_FOUND) return ERROR_LOCATION_NOT_FOUND;
+    if (res_loclist[0] != RES_LOCLIST) return ERROR_UNEXPECTED_MESSAGE;
+    if (res_loclist[0] == RES_LOCLIST && bytes_received % ID_LENGTH != 1) return ERROR_UNEXPECTED_MESSAGE;
+
+    for (int i = 0; i < bytes_received; i++){
+        sensor_id_list[i] = res_loclist[i + 1];
+    }
+    
+    return bytes_received / ID_LENGTH;
 }
 
 int main(int argc, char** argv){
@@ -201,7 +219,7 @@ int main(int argc, char** argv){
                 break;
             }
 
-            if (strncmp(stdin_input, "Check failure", 13) == 0){
+            if (strncmp(stdin_input, "check failure", 13) == 0){
                 int status = requestSensorStatus(status_server_socket);
 
                 if (status == ERROR_SENSOR_NOT_FOUND){
@@ -220,7 +238,7 @@ int main(int argc, char** argv){
                     int area = getAreaFromLocation(status);
                     getAreaName(area, area_name);
 
-                    printf("Alert received from location: %d (%s)\n", area, area_name);
+                    printf("Alert received from area: %d (%s)\n", area, area_name);
                     continue;
                 }
 
@@ -248,6 +266,42 @@ int main(int argc, char** argv){
                 }
 
                 if (EXIT_LOGGING) printExitCode(location);
+                break;
+            }
+
+            if (strncmp(stdin_input, "diagnose ", 9) == 0){
+                uint8_t req_loclist[3];
+                req_loclist[0] = REQ_LOCLIST;
+                req_loclist[1] = stdin_input[9];
+                req_loclist[2] = stdin_input[10];
+
+                uint8_t sensor_id_list[MAX_CLIENT_SERVER_CONNECTIONS * ID_LENGTH];
+                int num_sensors = requestDiagnostic(location_server_socket, req_loclist, sensor_id_list);
+                if (num_sensors == ERROR_LOCATION_NOT_FOUND){
+                    printf("Location not found\n");
+                    if (EXIT_LOGGING) printExitCode(ERROR_LOCATION_NOT_FOUND);
+                    break;
+                }
+
+                if (num_sensors == 0){
+                    printf("No sensors at location %c%c\n", req_loclist[1], req_loclist[2]);
+                    continue;
+                }
+
+                if (num_sensors >= 1 && num_sensors <= MAX_CLIENT_SERVER_CONNECTIONS){
+                    printf("Sensors at location %c%c: ", req_loclist[1], req_loclist[2]);
+
+                    for (int i = 0; i < num_sensors - 1; i++){
+                        printID(sensor_id_list + i * ID_LENGTH);
+                        printf(", ");
+                    }
+
+                    printID(sensor_id_list + (num_sensors - 1) * ID_LENGTH);
+                    printf("\n");
+                    continue;
+                }
+
+                if (EXIT_LOGGING) printExitCode(num_sensors);
                 break;
             }
 

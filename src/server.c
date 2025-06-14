@@ -730,6 +730,43 @@ int main(int argc, char** argv){
                         exit(ERROR_SEND);
                     }
                 }
+
+                if (incoming_message[0] == REQ_LOCLIST){
+                    if (identity != IDENTITY_LOCATION){
+                        closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                        if (EXIT_LOGGING) printExitCode(ERROR_UNEXPECTED_MESSAGE);
+                        exit(ERROR_UNEXPECTED_MESSAGE);
+                    }
+
+                    printf("REQ_LOCLIST %c%c\n", incoming_message[1], incoming_message[2]);
+                    int num_sensors = 0;
+                    int location = (incoming_message[1] - '0') * 10 + (incoming_message[2] - '0');
+                    int8_t res_loclist[MAX_CLIENT_SERVER_CONNECTIONS * ID_LENGTH + 1];
+
+                    if (location < 1 || location > 10){
+                        res_loclist[0] = MESSAGE_ERROR;
+                        res_loclist[1] = LOCATION_NOT_FOUND;
+                    }
+
+                    else{
+                        res_loclist[0] = RES_LOCLIST;
+                        for (int i = 0; i < MAX_CLIENT_SERVER_CONNECTIONS; i++){
+                            if (client_data[i] == location){
+                                for (int j = 0; j < ID_LENGTH; j++)
+                                    res_loclist[1 + num_sensors * ID_LENGTH + j] = client_ids[i * ID_LENGTH + j];
+
+                                num_sensors++;
+                            }
+                        }
+                    }
+
+                    int bytes_sent = num_sensors * ID_LENGTH + 1 > 2 ? num_sensors * ID_LENGTH + 1 : 2;
+                    if (send(client_sockets[i], res_loclist, bytes_sent, 0) == -1){
+                        closeSockets(client_listen_socket, p2p_listen_socket, p2p_socket, client_sockets);
+                        if (EXIT_LOGGING) printExitCode(ERROR_SEND);
+                        exit(ERROR_SEND);
+                    }
+                }
             }
         }
     }

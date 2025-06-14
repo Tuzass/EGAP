@@ -18,10 +18,10 @@ void printExitCode(int exit_code){
         "NO FREE SENSOR INDEX",
         "ERROR IN CLIENT ACCEPT",
         "ERROR IN PEER ACCEPT",
-        "PEER NOT FOUND IN DISCONNECT",
-        "SENSOR NOT FOUND IN DISCONNECT",
-        "UNREGISTERED LOCATION ERROR",
-        "UNREGISTERED AREA ERROR"
+        "PEER NOT FOUND",
+        "SENSOR NOT FOUND",
+        "LOCATION NOT FOUND",
+        "AREA NOT FOUND"
     };
     
     printf("Exiting: %s\n", error_messages[-exit_code]);
@@ -98,7 +98,7 @@ void closeSockets(int s1, int s2, int s3, int* socket_array){
 }
 
 int getAreaFromLocation(int location){
-    if (location < 1 || location > 10) return ERROR_UNREGISTERED_LOCATION;
+    if (location < 1 || location > 10) return ERROR_LOCATION_NOT_FOUND;
     if (location < 4) return NORTH;
     if (location < 6) return SOUTH;
     if (location < 8) return EAST;
@@ -106,7 +106,7 @@ int getAreaFromLocation(int location){
 }
 
 int getAreaName(int area, char* name){
-    if (area < 1 || area > 4) return ERROR_UNREGISTERED_AREA;
+    if (area < 1 || area > 4) return ERROR_AREA_NOT_FOUND;
 
     char* area_names[] = {"Norte", "Sul", "Leste", "Oeste"};
 
